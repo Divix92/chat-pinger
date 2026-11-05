@@ -7,7 +7,25 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
+  cancel-superseded:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Stop older builds of this workflow on this branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml/runs" -f branch="$GITHUB_REF_NAME" -f status=in_progress -f per_page=100 --jq ".workflow_runs[] | select(.id < $GITHUB_RUN_ID) | .id" > "$RUNNER_TEMP/superseded-pinger-runs"
+          while read -r pinger_run_id; do
+            gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$pinger_run_id/cancel"
+          done < "$RUNNER_TEMP/superseded-pinger-runs"
+
   tests:
     runs-on: ubuntu-latest
     steps:
@@ -22,6 +40,7 @@ jobs:
       - run: CHROMIUM_PATH=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())") npm run test:ui
       - run: CHROMIUM_PATH=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())") npm run test:browser-chat
       - run: xvfb-run -a npm run test:electron-chat
+        timeout-minutes: 2
   windows-desktop:
     runs-on: windows-2022
     needs: tests
