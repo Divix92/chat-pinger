@@ -4,6 +4,7 @@
 function parseChatFrame(payload) {
   let frame, data;
   try { frame=JSON.parse(payload); } catch { return null; }
+  if (!frame || typeof frame !== 'object' || Array.isArray(frame)) return null;
   if (frame.event === 'pusher_internal:subscription_succeeded' && /^chatrooms\.\d+\.v2$/.test(frame.channel || '')) return {type:'subscribed',channel:frame.channel};
   if (frame.event !== 'App\\Events\\ChatMessageEvent') return null;
   if (!/^chatrooms\.\d+\.v2$/.test(frame.channel || '')) return null;

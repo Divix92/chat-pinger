@@ -2,7 +2,7 @@ const {test}=require('node:test');const assert=require('node:assert/strict');con
 const {parseChatFrame,BrowserFrames}=require('../src/browser-frames.cjs');
 const payload=(event,data,channel='chatrooms.123.v2')=>JSON.stringify({event,data:JSON.stringify(data),channel});
 test('parses only incoming public chat messages and chat subscription acknowledgements',()=>{
- assert.equal(parseChatFrame('invalid'),null);assert.equal(parseChatFrame(payload('pusher:connection_established',{socket_id:'ignore'})),null);
+ assert.equal(parseChatFrame('invalid'),null);assert.equal(parseChatFrame('null'),null);assert.equal(parseChatFrame('[]'),null);assert.equal(parseChatFrame(payload('pusher:connection_established',{socket_id:'ignore'})),null);
  assert.equal(parseChatFrame(payload('authentication',{token:'not-collected'})),null);
  assert.equal(parseChatFrame(payload('App\\Events\\ChatMessageEvent',{id:'one',content:'hello'},'private-room')),null);
  assert.equal(parseChatFrame(payload('pusher_internal:subscription_succeeded',{})).type,'subscribed');
