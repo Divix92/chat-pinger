@@ -62,6 +62,7 @@ class PingerDock final : public QWidget {
     bool listening = false;
     bool subscribed = false;
     bool sourceConfigured = false;
+    bool sceneReady = true;
     obs_source_t *audio = nullptr;
 
     static QString configPath() {
@@ -173,6 +174,7 @@ class PingerDock final : public QWidget {
         });
     }
     bool ensureSource() {
+        if (!sceneReady) return false;
         if (audio && obs_source_removed(audio)) { obs_source_release(audio); audio = nullptr; sourceConfigured = false; }
         if (!audio) {
             auto *existing = obs_get_source_by_name("Chat Pinger Alerts");
@@ -255,18 +257,43 @@ public:
         QObject::connect(routing, &QComboBox::currentIndexChanged, this, [this] { save(); });
         QObject::connect(muted, &QCheckBox::toggled, this, [this] { save(); });
     }
-    ~PingerDock() override { stop(); save(); if (audio) { obs_source_media_stop(audio); obs_source_release(audio); } }
+    void resumeAudio() { sceneReady = true; }
+    void releaseAudio() {
+        sceneReady = false;
+        if (audio) { obs_source_media_stop(audio); obs_source_release(audio); audio = nullptr; }
+        sourceConfigured = false;
+    }
+    ~PingerDock() override { stop(); save(); releaseAudio(); }
 };
 
 static PingerDock *dock = nullptr;
+static bool frontendActive = false;
+static void frontendEvent(enum obs_frontend_event event, void *) {
+    if (event == OBS_FRONTEND_EVENT_SCENE_COLLECTION_CLEANUP && dock) dock->releaseAudio();
+    if ((event == OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED || event == OBS_FRONTEND_EVENT_FINISHED_LOADING) && dock) dock->resumeAudio();
+    if (event == OBS_FRONTEND_EVENT_EXIT && frontendActive) {
+        // OBS clears scene data before EXIT, then invalidates its frontend API.
+        // Release our source on collection cleanup and remove the dock while
+        // frontend callbacks are still valid, rather than in module unload.
+        obs_frontend_remove_event_callback(frontendEvent, nullptr);
+        frontendActive = false;
+        dock = nullptr;
+        obs_frontend_remove_dock("chat-pinger");
+    }
+}
 bool obs_module_load(void) {
     QMetaObject::invokeMethod(qApp, [] {
         dock = new PingerDock();
         if (!obs_frontend_add_dock_by_id("chat-pinger", "Chat Pinger", dock)) { delete dock; dock = nullptr; }
+        else { frontendActive = true; obs_frontend_add_event_callback(frontendEvent, nullptr); }
     }, Qt::QueuedConnection);
     return true;
 }
 void obs_module_unload(void) {
-    if (dock) obs_frontend_remove_dock("chat-pinger");
-    dock = nullptr;
+    if (frontendActive) {
+        obs_frontend_remove_event_callback(frontendEvent, nullptr);
+        frontendActive = false;
+        dock = nullptr;
+        obs_frontend_remove_dock("chat-pinger");
+    }
 }
