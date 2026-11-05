@@ -14,6 +14,32 @@ retro messenger tone inspired by classic messengers such as Gadu-Gadu. No
 copyrighted Gadu-Gadu recording is included. You can import your own audio.
 Volume, sound selection and mute settings are saved locally.
 
+## Desktop 0.4: powiadomienia z linków overlayów
+
+W **Your workspace → Powiadomienia → Utwórz powiadomienie** wpisz nazwę i wklej
+prywatny link browser source, np. overlay StreamElements. Zapisz, kliknij
+**Uruchom**, a następnie wywołaj test alertu w panelu swojego dostawcy. Aplikacja
+odtwarza oryginalny dźwięk i animację overlayu. Każde źródło ma własną głośność,
+podgląd, start/stop, edycję i opcjonalny autostart. Można zapisać do 20 źródeł.
+
+Zamknięcie podglądu ukrywa okno; **Zatrzymaj** wyłącza źródło. Zamknięcie głównej
+aplikacji wyłącza wszystkie overlaye. Źródła z autostartem wznawiają pracę w tle
+po uruchomieniu aplikacji; ich okno można pokazać przyciskiem **Podgląd**.
+Głośność jest mnożnikiem ustawienia widgetu: 100% zachowuje jego oryginalny poziom,
+a 0% wycisza całe źródło. Obsługiwane są standardowe audio/video HTML oraz Web
+Audio, również w widgetach w ramkach overlayu.
+
+Pełne linki są przechowywane lokalnie w pliku `overlays.json` w danych użytkownika
+aplikacji, z uprawnieniami właściciela tam, gdzie obsługuje je system plików.
+Lista pokazuje tylko nazwę serwera, a pole linku jest maskowane. Linki nie trafiają
+do repozytorium ani do stanu mostka OBS. Każde źródło używa oddzielnej sesji
+przeglądarki, bez Node.js, dostępu do plików lub uprawnień mikrofonu/kamery.
+
+To odtwarzacz browser source, nie edytor konta StreamElements: konfiguracja i
+testy alertów pozostają w panelu dostawcy. Faktyczne alerty wymagają prawidłowego
+linku i działającego połączenia z dostawcą. Prywatny link użytkownika nie był
+używany w testach; testy korzystają z lokalnych, kontrolowanych stron overlayów.
+
 ## Desktop 0.3: use Kick’s own live connection
 
 **Start listening** now opens the visible Kick popout chat and observes incoming
@@ -143,3 +169,7 @@ GPL-2.0-or-later; see [third-party notes](obs/THIRD_PARTY.md).
 WebSocket server: the fixture contains no chat-message DOM, yet incoming frames
 reach the activity panel exactly once. On Linux this test needs a display, e.g.
 `xvfb-run -a npm run test:electron-chat`. This does not claim live Kick verification.
+
+Overlay validation: `npm run test:overlay-audio` verifies real HTML/Web Audio
+scaling; `xvfb-run -a npm run test:electron-overlays` tests saved sources, actual
+Electron windows, widget-frame audio, live volume changes and start/stop.

@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const PUBLIC = path.join(__dirname, '../public');
 const defaults = { sound: 'chime', volume: 65, output: 'desktop', muted: false, channel: '', customName: '' };
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
-async function createServer({ monitor, dataDir, port = 0 }) {
+async function createServer({ monitor, dataDir, port = 0, overlays = null }) {
   await fs.mkdir(dataDir, { recursive: true });
   let settings = { ...defaults };
   try { settings = { ...defaults, ...JSON.parse(await fs.readFile(path.join(dataDir, 'settings.json'), 'utf8')) }; } catch {}
@@ -15,6 +15,7 @@ async function createServer({ monitor, dataDir, port = 0 }) {
   const broadcast = (event, data) => { const frame = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`; for (const client of clients) { if (client.write(frame) === false) client.destroy(); } };
   const onStatus = s => broadcast('status', s); const onChat = m => broadcast('chat', m);
   monitor.on('status', onStatus); monitor.on('chat', onChat);
+  const onOverlays=()=>broadcast('overlays-changed',{}); overlays?.on('change',onOverlays);
   const snapshot = () => ({ settings, monitor: monitor.state, browserAvailable: typeof monitor.connectBrowser === 'function', obsUrl: `${origin}/obs#${token}` });
   async function persist() {
     const content = JSON.stringify(settings, null, 2);
@@ -31,6 +32,7 @@ async function createServer({ monitor, dataDir, port = 0 }) {
       const url = new URL(req.url, origin);
       const obs = url.pathname.startsWith('/obs-api/');
       if ((url.pathname.startsWith('/api/') || obs) && (req.headers['x-pinger-token'] || url.searchParams.get('token')) !== token) return reply(401, { error: 'Unauthorized.' });
+      if (req.method === 'GET' && url.pathname === '/api/overlays') return reply(200,{available:Boolean(overlays)&&!overlays.loadError,sources:overlays?.list()||[],error:overlays?.loadError||''});
       if (req.method === 'GET' && ['/api/state', '/obs-api/state'].includes(url.pathname)) return reply(200, snapshot());
       if (req.method === 'GET' && ['/api/events', '/obs-api/events'].includes(url.pathname)) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
@@ -52,6 +54,20 @@ async function createServer({ monitor, dataDir, port = 0 }) {
           await persist(); broadcast('settings', settings); return reply(200, snapshot());
         }
         let input; try { input = JSON.parse(body.toString() || '{}'); } catch { return reply(400, { error: 'Invalid JSON.' }); }
+        if (url.pathname === '/api/overlays') {
+          if(!overlays)throw new Error('Overlaye są dostępne w aplikacji desktopowej.');
+          if(overlays.loadError)throw new Error(overlays.loadError);
+          switch(input.action){
+            case 'create': await overlays.create(input); break;
+            case 'update': await overlays.update(input.id,input); break;
+            case 'remove': await overlays.remove(input.id); break;
+            case 'start': overlays.start(input.id); break;
+            case 'stop': overlays.stop(input.id); break;
+            case 'show': overlays.show(input.id); break;
+            default: throw new Error('Nieznana operacja overlayu.');
+          }
+          return reply(200,{sources:overlays.list()});
+        }
         if (['/api/connect','/api/connect-browser'].includes(url.pathname)) {
           if (url.pathname === '/api/connect-browser' && typeof monitor.connectBrowser !== 'function') throw new Error('The Kick chat window is available in the desktop app.');
           const { parseChannel } = require('./channel.cjs'); const channel = parseChannel(input.channel);
@@ -78,6 +94,6 @@ async function createServer({ monitor, dataDir, port = 0 }) {
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolve); });
   origin = `http://127.0.0.1:${server.address().port}`;
   const heartbeat = setInterval(() => { for (const client of clients) client.write(': heartbeat\n\n'); }, 15000); heartbeat.unref();
-  return { server, token, origin, url: `${origin}/#${token}`, close: async () => { clearInterval(heartbeat); monitor.off('status', onStatus); monitor.off('chat', onChat); for (const client of clients) client.end(); await writeQueue.catch(() => {}); await new Promise(resolve => server.close(resolve)); } };
+  return { server, token, origin, url: `${origin}/#${token}`, close: async () => { clearInterval(heartbeat); monitor.off('status', onStatus); monitor.off('chat', onChat); overlays?.off('change',onOverlays); for (const client of clients) client.end(); await writeQueue.catch(() => {}); await new Promise(resolve => server.close(resolve)); } };
 }
 module.exports = { createServer, defaults };

@@ -39,6 +39,9 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: CHROMIUM_PATH=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())") npm run test:ui
       - run: CHROMIUM_PATH=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())") npm run test:browser-chat
+      - run: CHROMIUM_PATH=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())") npm run test:overlay-audio
+      - run: xvfb-run -a npm run test:electron-overlays
+        timeout-minutes: 2
       - run: xvfb-run -a npm run test:electron-chat
         timeout-minutes: 2
   windows-desktop:

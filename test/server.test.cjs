@@ -40,3 +40,11 @@ test('browser fallback control is authenticated and selects the browser connecto
  const result=await fetch(service.origin+'/api/connect-browser',{method:'POST',headers:{'x-pinger-token':service.token},body:JSON.stringify({channel:'https://kick.com/Test'})});
  assert.equal(result.status,200);assert.equal(selected,'test');
 });
+test('overlay settings require authentication and are excluded from chat/OBS snapshots',async t=>{
+ const {OverlayManager}=require('../src/overlays.cjs');const dataDir=await fs.mkdtemp(path.join(os.tmpdir(),'pinger-overlay-api-'));const overlays=await new OverlayManager({dataDir,createWindow:()=>{throw new Error('No remote sources in API test');}}).init();const monitor=new Monitor({resolveChannel:async()=>123});const service=await createServer({monitor,dataDir,overlays});
+ t.after(async()=>{overlays.closeAll();monitor.stop();await service.close();await fs.rm(dataDir,{recursive:true,force:true});});
+ assert.equal((await fetch(service.origin+'/api/overlays')).status,401);
+ const body={action:'create',name:'Example alert',url:'https://alerts.example/private-example-token',volume:50,autoStart:false};
+ const result=await fetch(service.origin+'/api/overlays',{method:'POST',headers:{'x-pinger-token':service.token},body:JSON.stringify(body)});assert.equal(result.status,200);assert.equal((await result.json()).sources.length,1);
+ for(const route of ['/api/state','/obs-api/state']){const response=await fetch(service.origin+route,{headers:{'x-pinger-token':service.token}});assert.equal((await response.text()).includes('private-example-token'),false);}
+});
