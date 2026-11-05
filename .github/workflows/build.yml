@@ -21,6 +21,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: CHROMIUM_PATH=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())") npm run test:ui
       - run: CHROMIUM_PATH=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())") npm run test:browser-chat
+      - run: xvfb-run -a npm run test:electron-chat
   windows-desktop:
     runs-on: windows-2022
     needs: tests

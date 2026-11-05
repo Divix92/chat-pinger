@@ -1,0 +1,18 @@
+const {_electron}=require('playwright');const http=require('node:http');const crypto=require('node:crypto');const fs=require('node:fs/promises');const os=require('node:os');const path=require('node:path');const assert=require('node:assert/strict');
+function send(socket,value){const body=Buffer.from(JSON.stringify(value));const header=Buffer.alloc(body.length<126?2:4);header[0]=0x81;if(body.length<126)header[1]=body.length;else{header[1]=126;header.writeUInt16BE(body.length,2);}socket.write(Buffer.concat([header,body]));}
+(async()=>{
+ const sockets=new Set();let connection;const server=http.createServer((_req,res)=>res.end('Offline chat fixture'));
+ server.on('upgrade',(req,socket)=>{const accept=crypto.createHash('sha1').update(req.headers['sec-websocket-key']+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: '+accept+'\r\n\r\n');sockets.add(socket);connection=socket;socket.on('error',()=>{});socket.on('close',()=>sockets.delete(socket));setTimeout(()=>{if(!socket.destroyed)send(socket,{event:'pusher_internal:subscription_succeeded',channel:'chatrooms.123.v2',data:'{}'});},100);});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const port=server.address().port;const dataDir=await fs.mkdtemp(path.join(os.tmpdir(),'pinger-electron-'));let app;
+ try{
+  app=await _electron.launch({args:['--no-sandbox','--disable-gpu','.'],env:{...process.env,XDG_CONFIG_HOME:dataDir},timeout:30000});
+  await app.evaluate(async({session},port)=>{const html=`<!doctype html><html><head><title>Offline chat fixture</title></head><body><p>Fixture deliberately has no chat DOM selectors.</p><script>window.chatSocket=new WebSocket('ws://127.0.0.1:${port}');window.chatSocket.onmessage=()=>{};</script></body></html>`;await session.defaultSession.protocol.handle('https',()=>new Response(html,{headers:{'content-type':'text/html'}}));},port);
+  const main=await app.firstWindow();await main.locator('#channel').fill('test');const opened=app.waitForEvent('window',{timeout:10000});await main.getByRole('button',{name:'Start listening'}).click();const chat=await opened;
+  await main.getByText('Listening',{exact:true}).waitFor({timeout:20000});assert(connection,'Browser must establish an actual local websocket');
+  const frame={event:'App\\Events\\ChatMessageEvent',channel:'chatrooms.123.v2',data:JSON.stringify({id:'real-browser-socket',content:'message captured without DOM selectors',sender:{username:'fixture viewer'}})};
+  send(connection,frame);send(connection,frame);
+  await main.getByText('message captured without DOM selectors',{exact:true}).waitFor();assert.equal(await main.locator('#activity li').count(),1);await main.getByText('1 message',{exact:true}).waitFor();
+  await chat.close();await main.getByText('Kick chat window closed. Monitoring stopped.').waitFor();
+  console.log('PASS: actual Electron default connection captures real browser websocket frames, delivers once without any chat DOM selectors, and cleans up on close. Offline fixtures only.');
+ }catch(error){if(app){console.error('STATUS:',await (await app.firstWindow()).locator('#connection-status').textContent());console.error('WINDOWS:',await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().map(w=>({title:w.getTitle(),destroyed:w.isDestroyed()}))));}throw error;}finally{await app?.close();for(const socket of sockets)socket.destroy();await new Promise(resolve=>server.close(resolve));await fs.rm(dataDir,{recursive:true,force:true});}
+})().catch(error=>{console.error(error);process.exitCode=1;});

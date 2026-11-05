@@ -23,7 +23,7 @@ app.whenReady().then(async () => {
     chat.webContents.on('will-redirect',(event,url)=>{if(!allowed(url))event.preventDefault();});
     return chat;
   }});
-  monitor = new ChatController(primary,browser);
+  monitor = new ChatController(primary,browser,{preferBrowser:true});
   service = await createServer({ monitor, dataDir: path.join(app.getPath('userData'), 'data'), port: 0 });
   window = new BrowserWindow({ width: 1160, height: 850, minWidth: 780, minHeight: 650, backgroundColor: '#101312', title: 'Chat Pinger', autoHideMenuBar: true, webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false } });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

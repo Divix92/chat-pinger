@@ -1,6 +1,6 @@
 {
   "name": "chat-pinger",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Kick chat sound notifications for Windows and OBS",
   "author": "Divix92",
   "license": "MIT",
@@ -12,7 +12,8 @@
     "test:ui": "node test/ui.cjs",
     "dist:win": "electron-builder --win nsis portable --x64",
     "pack": "electron-builder --dir",
-    "test:browser-chat": "node test/browser-dom.cjs"
+    "test:browser-chat": "node test/browser-dom.cjs",
+    "test:electron-chat": "node test/electron-chat.cjs"
   },
   "devDependencies": {
     "electron": "^42.0.0",

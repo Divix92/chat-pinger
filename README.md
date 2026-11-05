@@ -14,32 +14,36 @@ retro messenger tone inspired by classic messengers such as Gadu-Gadu. No
 copyrighted Gadu-Gadu recording is included. You can import your own audio.
 Volume, sound selection and mute settings are saved locally.
 
-## Connection fallback (desktop 0.2)
+## Desktop 0.3: use Kick’s own live connection
 
-If the direct chat feed keeps reconnecting, click **Open Kick chat window
-(fallback)** below the channel field. A separate, visible Kick chat window opens
-at Kick's popout chat page. Complete any verification that Kick displays. Once
-its chat list appears, the app watches new message elements and plays the same
-selected sound at your configured volume. Keep both app and chat window open;
-closing the chat window stops this mode. Minimized windows keep running.
+**Start listening** now opens the visible Kick popout chat and observes incoming
+public chat-message events received by that page. Kick chooses its own current
+server, app key and cluster; the desktop does not use the hardcoded direct
+Pusher endpoint from earlier releases. **Reopen Kick chat window** restarts it.
+Keep the chat window open, and complete any verification Kick displays.
 
-Initial chat history is ignored (including the first 1.5 seconds of rendering).
-This mode depends on Kick's chat page DOM and can break if Kick changes its
-layout. It cannot overcome a blocked Kick website or guarantee that Electron
-passes a browser verification. The status stays at “Waiting for Kick chat” when
-the expected chat list has not appeared. It does not require the public Pusher
-socket or channel metadata lookup. The native OBS plugin still uses its
-independent direct connector; the desktop's optional OBS browser-source output
-can carry fallback notifications into OBS.
+The primary browser connector uses Electron’s DevTools Network events and
+filters only incoming public `ChatMessageEvent` messages and chat subscription
+acknowledgements. It does not record network headers, cookies, outgoing frames,
+authentication events, or arbitrary network traffic. Duplicate message IDs are
+suppressed. It does not depend on Kick’s HTML message selectors. A DOM observer
+remains a secondary fallback if browser frame inspection is unavailable.
 
-The main activity list contains newly received messages, not an embedded copy
-of Kick chat or old message history. Version 0.2 also shows direct transport
-errors and stops after eight retries instead of reconnecting indefinitely.
+The main activity panel contains newly received messages, not old history.
+Closing the Kick window stops monitoring. Kick can still block Electron or
+change its chat event protocol, so this remains an unofficial integration.
+Avoid opening developer tools on the chat window while monitoring, as this can
+detach its inspector; reopen the chat window if needed.
+
+The original fixed-cluster connection returned Pusher error 4001 on the user’s
+machine. The native OBS plugin still uses that older independent connector and
+may encounter the same error. Until it receives a separate connector update,
+use the desktop app’s OBS browser-source output for the browser-backed method.
 
 ## Desktop
 
 Run the portable EXE, or install using the Setup EXE. Paste a Kick channel link
-or username and click **Start listening**. Choose a sound and **Test sound**.
+or username and click **Start listening**, then keep the opened Kick chat window running. Choose a sound and **Test sound**.
 Import MP3, WAV or OGG audio up to 10 MB and 10 seconds. Closing the app stops
 monitoring; minimizing it keeps monitoring running. No account or Kick login is
 requested, and the app does not send messages or post to chat.
@@ -96,11 +100,14 @@ published as a GitHub Release.
 
 ## Kick connectivity
 
-The no-login, paste-any-channel workflow uses Kick's **website API**, currently
+The legacy direct connector (native OBS plugin and browser-development server)
+uses Kick's **website API**, currently
 `https://kick.com/api/v2/channels/{slug}`, and its public Pusher transport at
 `wss://ws-us2.pusher.com`, subscribing to `chatrooms.{id}.v2` and
 `App\\Events\\ChatMessageEvent`. These are not stable official API contracts.
-Kick can block requests with anti-bot challenges or change them. The app shows
+Desktop 0.3 instead observes incoming chat frames from the visible Kick page
+and lets that page choose the current endpoint. Kick can block website access
+with anti-bot challenges or change its protocol. The app shows
 lookup/connection errors rather than pretending to be connected or bypassing
 challenges. Both online and offline channels can be selected if Kick exposes
 their chatroom. Verification requires an actual channel and a new chat message.
@@ -131,3 +138,8 @@ acceptance checks. See the latest workflow result before using Windows builds.
 
 Desktop code and original sounds: MIT. Native OBS plugin/build tooling:
 GPL-2.0-or-later; see [third-party notes](obs/THIRD_PARTY.md).
+
+`npm run test:electron-chat` exercises the actual Electron app with an offline
+WebSocket server: the fixture contains no chat-message DOM, yet incoming frames
+reach the activity panel exactly once. On Linux this test needs a display, e.g.
+`xvfb-run -a npm run test:electron-chat`. This does not claim live Kick verification.
