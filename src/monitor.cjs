@@ -4,9 +4,9 @@ const { parseChannel } = require('./channel.cjs');
 // Kick's public website transport; not a guaranteed public API contract.
 const SOCKET_URL = 'wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0&flash=false';
 class Monitor extends EventEmitter {
-  constructor({ resolveChannel, socketFactory = url => new WebSocket(url), retryBase = 1000, handshakeMs = 20000 } = {}) {
+  constructor({ resolveChannel, socketFactory = url => new WebSocket(url), retryBase = 1000, handshakeMs = 20000, maxRetries = 8 } = {}) {
     super(); this.resolveChannel = resolveChannel; this.socketFactory = socketFactory;
-    this.retryBase = retryBase; this.handshakeMs = handshakeMs;
+    this.retryBase = retryBase; this.handshakeMs = handshakeMs; this.maxRetries = maxRetries;
     this.state = { status: 'idle', channel: '', message: 'Ready when you are.', count: 0 };
     this.generation = 0; this.seen = new Set(); this.attempt = 0;
   }
@@ -15,7 +15,7 @@ class Monitor extends EventEmitter {
     const channel = parseChannel(input);
     this.stop(false); const generation = this.generation;
     this.state = { status: 'connecting', channel, count: 0, message: 'Finding channel…' };
-    this.seen.clear(); this.attempt = 0; this.publish('connecting', 'Finding channel…');
+    this.seen.clear(); this.attempt = 0; this.lastFailure = ''; this.terminalFailure = false; this.publish('connecting', 'Finding channel…');
     try {
       const room = await this.resolveChannel(channel);
       if (generation !== this.generation) return;
@@ -27,12 +27,12 @@ class Monitor extends EventEmitter {
     if (generation !== this.generation) return;
     this.publish('connecting', 'Connecting to live chat…');
     let socket;
-    try { socket = this.socketFactory(SOCKET_URL); } catch { this.retry(generation); return; }
+    try { socket = this.socketFactory(SOCKET_URL); } catch (error) { this.lastFailure = `WebSocket could not start: ${error.message}`; this.retry(generation); return; }
     this.socket = socket;
     const current = () => generation === this.generation && this.socket === socket;
     const send = data => { if (socket.readyState === 1) socket.send(JSON.stringify(data)); };
     let watchdog;
-    const arm = (ms = this.handshakeMs) => { clearTimeout(watchdog); watchdog = setTimeout(() => { if (current()) socket.close(); }, ms); watchdog.unref?.(); };
+    const arm = (ms = this.handshakeMs) => { clearTimeout(watchdog); watchdog = setTimeout(() => { if (current()) { this.lastFailure = 'Chat server handshake or heartbeat timed out.'; socket.close(); } }, ms); watchdog.unref?.(); };
     arm();
     socket.addEventListener('message', event => {
       if (!current()) return;
@@ -45,8 +45,10 @@ class Monitor extends EventEmitter {
         send({ event: 'pusher:subscribe', data: { auth: '', channel: `chatrooms.${this.room}.v2` } });
       } else if (frame.event === 'pusher:ping') send({ event: 'pusher:pong', data: {} });
       else if (frame.event === 'pusher_internal:subscription_succeeded' && frame.channel === `chatrooms.${this.room}.v2`) {
-        this.attempt = 0; this.publish('connected', `Listening to ${this.state.channel}`);
+        this.attempt = 0; this.lastFailure = ''; this.publish('connected', `Listening to ${this.state.channel}`);
       } else if (frame.event === 'pusher:error' || frame.event === 'pusher:subscription_error') {
+        this.lastFailure = `Chat server rejected the connection${data?.code ? ` (${data.code})` : ''}: ${String(data?.message || 'subscription failed').slice(0,180)}`;
+        this.terminalFailure = Number(data?.code) >= 4000 && Number(data?.code) < 4100;
         socket.close();
       } else if (frame.event === 'App\\Events\\ChatMessageEvent' && frame.channel === `chatrooms.${this.room}.v2` && data && this.state.status === 'connected') {
         if ((typeof data.id !== 'string' && typeof data.id !== 'number') || !String(data.id)) return;
@@ -58,14 +60,15 @@ class Monitor extends EventEmitter {
         this.emit('status', this.state);
       }
     });
-    socket.addEventListener('error', () => { if (current()) socket.close(); });
-    socket.addEventListener('close', () => { clearTimeout(watchdog); if (current()) this.retry(generation); });
+    socket.addEventListener('error', event => { if (current()) { this.lastFailure = String(event.error?.message || event.message || 'WebSocket handshake failed. The chat server may be blocked or unavailable.').slice(0,220); socket.close(); } });
+    socket.addEventListener('close', event => { clearTimeout(watchdog); if (current()) { if (!this.lastFailure) this.lastFailure = `Chat socket closed${event.code ? ` (code ${event.code})` : ''}${event.reason ? `: ${String(event.reason).slice(0,180)}` : '.'}`; this.retry(generation); } });
     this.clearWatchdog = () => clearTimeout(watchdog);
   }
   retry(generation) {
     if (generation !== this.generation) return;
+    if (this.terminalFailure || this.attempt >= this.maxRetries) { this.publish('error', `${this.lastFailure || 'Chat connection failed.'} Try the Open Kick chat window fallback.`); return; }
     const delay = Math.min(30000, this.retryBase * 2 ** Math.min(this.attempt++, 5));
-    this.publish('reconnecting', `Connection lost. Retrying in ${Math.ceil(delay / 1000)}s…`);
+    this.publish('reconnecting', `Connecting to chat failed: ${this.lastFailure || "connection closed"} Retry ${this.attempt}/${this.maxRetries} in ${Math.ceil(delay / 1000)}s. You can use the Kick chat window fallback.`);
     clearTimeout(this.retryTimer); this.retryTimer = setTimeout(() => this.open(generation), delay); this.retryTimer.unref?.();
   }
   stop(notify = true) {

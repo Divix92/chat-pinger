@@ -31,3 +31,12 @@ test('event stream delivers actual monitoring and preview events',async t=>{
  monitor.emit('chat',{id:'fixture',content:'test'}); const frame=new TextDecoder().decode((await reader.read()).value); assert.match(frame,/event: chat/); assert.match(frame,/fixture/);
  await fetch(service.origin+'/api/test',{method:'POST',headers:{'x-pinger-token':service.token},body:'{}'}); assert.match(new TextDecoder().decode((await reader.read()).value),/event: preview/); await reader.cancel();
 });
+test('browser fallback control is authenticated and selects the browser connector',async t=>{
+ const dataDir=await fs.mkdtemp(path.join(os.tmpdir(),'pinger-browser-api-'));const monitor=new Monitor({resolveChannel:async()=>123});let selected='';
+ monitor.connectBrowser=async channel=>{selected=channel;};const service=await createServer({monitor,dataDir});
+ t.after(async()=>{monitor.stop();await service.close();await fs.rm(dataDir,{recursive:true,force:true});});
+ const state=await (await fetch(service.origin+'/api/state',{headers:{'x-pinger-token':service.token}})).json();assert.equal(state.browserAvailable,true);
+ assert.equal((await fetch(service.origin+'/api/connect-browser',{method:'POST',body:JSON.stringify({channel:'test'})})).status,401);
+ const result=await fetch(service.origin+'/api/connect-browser',{method:'POST',headers:{'x-pinger-token':service.token},body:JSON.stringify({channel:'https://kick.com/Test'})});
+ assert.equal(result.status,200);assert.equal(selected,'test');
+});

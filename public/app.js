@@ -47,6 +47,7 @@ function message(item) {
 }
 for (const sound of sounds) addSound(sound);
 $('connect-form').addEventListener('submit', async event => { event.preventDefault(); try { error(''); await player.unlock(); await api('connect',{channel:$('channel').value}); $('activity').replaceChildren(); $('empty-activity').hidden = false; } catch(e) { error(e.message); } });
+$('browser-connect').addEventListener('click',async()=>{try{error('');await player.unlock();await api('connect-browser',{channel:$('channel').value});$('activity').replaceChildren();$('empty-activity').hidden=false;}catch(e){error(e.message);}});
 $('stop').addEventListener('click', () => api('stop',{}).catch(e => error(e.message)));
 $('preview').addEventListener('click', async () => { try { error(''); await player.unlock(); await api('test',{}); } catch(e) { error(e.message); } });
 $('volume').addEventListener('input', () => { $('volume-value').value = `${$('volume').value}%`; });
@@ -62,7 +63,7 @@ $('custom').addEventListener('change', async () => {
 });
 $('copy-obs').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('obs-url').value); $('copy-obs').textContent = 'Copied'; setTimeout(() => $('copy-obs').textContent = 'Copy',1800); } catch { $('obs-url').select(); error('Copy the selected URL.'); } });
 try {
- const state = await api('state'); renderSettings(state.settings); renderStatus(state.monitor); $('channel').value = settings.channel; $('obs-url').value = state.obsUrl;
+ const state = await api('state'); $('browser-connect').hidden = !state.browserAvailable; renderSettings(state.settings); renderStatus(state.monitor); $('channel').value = settings.channel; $('obs-url').value = state.obsUrl;
  events = new EventSource(`/api/events?token=${token}`);
  events.addEventListener('state', e => { const state = JSON.parse(e.data); renderSettings(state.settings); renderStatus(state.monitor); });
  events.addEventListener('settings', e => renderSettings(JSON.parse(e.data)));

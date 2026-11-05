@@ -15,7 +15,7 @@ async function createServer({ monitor, dataDir, port = 0 }) {
   const broadcast = (event, data) => { const frame = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`; for (const client of clients) { if (client.write(frame) === false) client.destroy(); } };
   const onStatus = s => broadcast('status', s); const onChat = m => broadcast('chat', m);
   monitor.on('status', onStatus); monitor.on('chat', onChat);
-  const snapshot = () => ({ settings, monitor: monitor.state, obsUrl: `${origin}/obs#${token}` });
+  const snapshot = () => ({ settings, monitor: monitor.state, browserAvailable: typeof monitor.connectBrowser === 'function', obsUrl: `${origin}/obs#${token}` });
   async function persist() {
     const content = JSON.stringify(settings, null, 2);
     const operation = writeQueue.catch(() => {}).then(async () => { const temporary = path.join(dataDir, 'settings.tmp'); await fs.writeFile(temporary, content); await fs.rename(temporary, path.join(dataDir, 'settings.json')); });
@@ -52,10 +52,11 @@ async function createServer({ monitor, dataDir, port = 0 }) {
           await persist(); broadcast('settings', settings); return reply(200, snapshot());
         }
         let input; try { input = JSON.parse(body.toString() || '{}'); } catch { return reply(400, { error: 'Invalid JSON.' }); }
-        if (url.pathname === '/api/connect') {
+        if (['/api/connect','/api/connect-browser'].includes(url.pathname)) {
+          if (url.pathname === '/api/connect-browser' && typeof monitor.connectBrowser !== 'function') throw new Error('The Kick chat window is available in the desktop app.');
           const { parseChannel } = require('./channel.cjs'); const channel = parseChannel(input.channel);
           settings = { ...settings, channel }; await persist(); broadcast('settings', settings);
-          void monitor.connect(channel); return reply(200, snapshot());
+          void (url.pathname === '/api/connect-browser' ? monitor.connectBrowser(channel) : monitor.connect(channel)); return reply(200, snapshot());
         }
         if (url.pathname === '/api/stop') { monitor.stop(); return reply(200, snapshot()); }
         if (url.pathname === '/api/test') { broadcast('preview', {}); return reply(200, { ok: true }); }

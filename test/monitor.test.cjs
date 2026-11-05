@@ -38,3 +38,12 @@ test('reconnects after transport failure and preserves deduplication', async () 
  assert.equal(monitor.state.status,'reconnecting'); await new Promise(r=>setTimeout(r,20)); assert.equal(sockets.length,2);
  sockets[1].message('pusher_internal:subscription_succeeded',{}); sockets[1].message('App\\Events\\ChatMessageEvent',{id:'a'}); assert.equal(monitor.state.count,1); monitor.stop();
 });
+test('exposes server rejection and stops retrying permanent Pusher errors',async()=>{
+ const socket=new Socket();const monitor=new Monitor({resolveChannel:async()=>123,socketFactory:()=>socket});await monitor.connect('test');
+ socket.message('pusher:error',{code:4001,message:'Application does not exist'});
+ assert.equal(monitor.state.status,'error');assert.match(monitor.state.message,/4001/);assert.match(monitor.state.message,/Application does not exist/);assert.match(monitor.state.message,/fallback/);monitor.stop();
+});
+test('constructor failure reports the cause and has a bounded retry budget',async()=>{
+ const monitor=new Monitor({resolveChannel:async()=>123,socketFactory:()=>{throw new Error('transport unavailable');},retryBase:5,maxRetries:1});
+ await monitor.connect('test');assert.match(monitor.state.message,/transport unavailable/);await new Promise(r=>setTimeout(r,20));assert.equal(monitor.state.status,'error');monitor.stop();
+});

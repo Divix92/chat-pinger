@@ -14,6 +14,28 @@ retro messenger tone inspired by classic messengers such as Gadu-Gadu. No
 copyrighted Gadu-Gadu recording is included. You can import your own audio.
 Volume, sound selection and mute settings are saved locally.
 
+## Connection fallback (desktop 0.2)
+
+If the direct chat feed keeps reconnecting, click **Open Kick chat window
+(fallback)** below the channel field. A separate, visible Kick chat window opens
+at Kick's popout chat page. Complete any verification that Kick displays. Once
+its chat list appears, the app watches new message elements and plays the same
+selected sound at your configured volume. Keep both app and chat window open;
+closing the chat window stops this mode. Minimized windows keep running.
+
+Initial chat history is ignored (including the first 1.5 seconds of rendering).
+This mode depends on Kick's chat page DOM and can break if Kick changes its
+layout. It cannot overcome a blocked Kick website or guarantee that Electron
+passes a browser verification. The status stays at “Waiting for Kick chat” when
+the expected chat list has not appeared. It does not require the public Pusher
+socket or channel metadata lookup. The native OBS plugin still uses its
+independent direct connector; the desktop's optional OBS browser-source output
+can carry fallback notifications into OBS.
+
+The main activity list contains newly received messages, not an embedded copy
+of Kick chat or old message history. Version 0.2 also shows direct transport
+errors and stops after eight retries instead of reconnecting indefinitely.
+
 ## Desktop
 
 Run the portable EXE, or install using the Setup EXE. Paste a Kick channel link
