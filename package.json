@@ -1,0 +1,52 @@
+{
+  "name": "chat-pinger",
+  "version": "0.1.0",
+  "description": "Kick chat sound notifications for Windows and OBS",
+  "author": "Divix92",
+  "license": "MIT",
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dev:web": "node src/dev.cjs",
+    "test": "node --test test/*.test.cjs",
+    "test:ui": "node test/ui.cjs",
+    "dist:win": "electron-builder --win nsis portable --x64",
+    "pack": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "^42.0.0",
+    "electron-builder": "^26.0.12",
+    "playwright": "^1.58.2"
+  },
+  "build": {
+    "appId": "com.divix92.chatpinger",
+    "productName": "Chat Pinger",
+    "asar": true,
+    "files": [
+      "src/**",
+      "public/**",
+      "obs/**",
+      "package.json",
+      "LICENSE",
+      "README.md"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "Chat-Pinger-${version}-Setup-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Chat-Pinger-${version}-Portable-${arch}.${ext}"
+    }
+  }
+}

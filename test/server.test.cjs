@@ -1,0 +1,33 @@
+const { test }=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs/promises'); const os=require('node:os'); const path=require('node:path');
+const {Monitor}=require('../src/monitor.cjs'); const {createServer}=require('../src/server.cjs');
+test('serves UI, protects control API, validates settings and retains them after restart', async t=>{
+ const dataDir=await fs.mkdtemp(path.join(os.tmpdir(),'pinger-test-'));
+ const monitor=new Monitor({resolveChannel:async()=>{throw new Error('offline test');}});
+ let service=await createServer({monitor,dataDir});
+ t.after(async()=>{monitor.stop();await service.close();await fs.rm(dataDir,{recursive:true,force:true});});
+ const api=async(route,body,extra={})=>fetch(service.origin+route,{method:body===undefined?'GET':'POST',headers:{'x-pinger-token':service.token,...extra},body:body===undefined?undefined:JSON.stringify(body)});
+ assert.match(await (await fetch(service.origin)).text(),/Every message/);
+ assert.equal((await fetch(service.origin+'/api/state')).status,401);
+ assert.equal((await api('/api/stop',{}, {Origin:'https://evil.example'})).status,403);
+ const wrongHost = await new Promise((resolve,reject) => { require('node:http').get(service.origin+'/api/state', {headers:{host:'evil.example','x-pinger-token':service.token}}, response => { response.resume(); resolve(response.statusCode); }).on('error',reject); });
+ assert.equal(wrongHost,403);
+ assert.equal((await api('/api/settings',{volume:101})).status,400);
+ assert.equal((await api('/api/settings',{sound:'bad'})).status,400);
+ assert.equal((await api('/api/connect',{channel:'https://evil.example/a'})).status,400);
+ assert.equal((await api('/api/settings',{volume:37,sound:'retro',muted:true})).status,200);
+ const body=Buffer.from('audio fixture'); const upload=await fetch(service.origin+'/api/sound?name=example.wav',{method:'POST',headers:{'x-pinger-token':service.token},body});
+ assert.equal(upload.status,200); assert.equal((await api('/api/sound')).status,200);
+ assert.equal((await fetch(service.origin+'/obs-api/stop?token='+service.token,{method:'POST'})).status,404);
+ await service.close(); service=await createServer({monitor,dataDir});
+ const state=await (await api('/api/state')).json(); assert.equal(state.settings.volume,37); assert.equal(state.settings.customName,'example.wav'); assert.equal(state.settings.muted,true);
+});
+test('event stream delivers actual monitoring and preview events',async t=>{
+ const dataDir=await fs.mkdtemp(path.join(os.tmpdir(),'pinger-sse-')); const monitor=new Monitor({resolveChannel:async()=>123}); const service=await createServer({monitor,dataDir}); const abort=new AbortController();
+ t.after(async()=>{abort.abort();monitor.stop();await service.close();await fs.rm(dataDir,{recursive:true,force:true});});
+ const response=await fetch(service.origin+'/api/events?token='+service.token,{signal:abort.signal}); const reader=response.body.getReader();
+ assert.match(new TextDecoder().decode((await reader.read()).value),/event: state/);
+ monitor.emit('chat',{id:'fixture',content:'test'}); const frame=new TextDecoder().decode((await reader.read()).value); assert.match(frame,/event: chat/); assert.match(frame,/fixture/);
+ await fetch(service.origin+'/api/test',{method:'POST',headers:{'x-pinger-token':service.token},body:'{}'}); assert.match(new TextDecoder().decode((await reader.read()).value),/event: preview/); await reader.cancel();
+});

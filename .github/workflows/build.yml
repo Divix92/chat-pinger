@@ -1,0 +1,64 @@
+name: Test and build
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: CHROMIUM_PATH=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())") npm run test:ui
+  windows-desktop:
+    runs-on: windows-2022
+    needs: tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run dist:win -- --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Chat-Pinger-Windows
+          path: dist/*.exe
+          if-no-files-found: error
+  windows-obs:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: win64_msvc2022_64
+          modules: qtwebsockets
+          cache: true
+      - name: Configure native OBS plugin and verified OBS SDK
+        shell: pwsh
+        run: cmake -S obs -B obs/build -G "Visual Studio 17 2022" -A x64 "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR"
+      - run: cmake --build obs/build --config Release --parallel 3
+      - run: cmake --install obs/build --config Release --prefix dist/obs-windows
+      - name: Include plugin documentation and license
+        shell: pwsh
+        run: |
+          Copy-Item obs/README.md dist/obs-windows/README.md
+          Copy-Item obs/LICENSE dist/obs-windows/LICENSE
+          Compress-Archive -Path dist/obs-windows/* -DestinationPath dist/Chat-Pinger-OBS-Windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Chat-Pinger-OBS-Windows
+          path: dist/Chat-Pinger-OBS-Windows.zip
+          if-no-files-found: error

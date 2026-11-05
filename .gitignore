@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.playwright/
+*.log
+test-results/
+obs/.deps/
+obs/build*/
